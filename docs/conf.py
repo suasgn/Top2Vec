@@ -1,9 +1,25 @@
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 import sphinx_rtd_theme
 from recommonmark.parser import CommonMarkParser
+import re
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('..'))
+
+sys.path.insert(0, os.path.abspath(".."))
+
+
+def get_release():
+    try:
+        return version("top2vec")
+    except PackageNotFoundError:
+        init_py = Path(__file__).resolve().parents[1] / "top2vec" / "__init__.py"
+        match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", init_py.read_text())
+        if match is None:
+            raise
+        return match.group(1)
+
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -24,12 +40,12 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'Top2Vec'
-copyright = '2020, Dimo Angelov'
-author = 'Dimo Angelov'
+project = "Top2Vec"
+copyright = "2020, Dimo Angelov"
+author = "Dimo Angelov"
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.36'
+release = get_release()
 
 
 # -- General configuration ---------------------------------------------------
@@ -37,10 +53,15 @@ release = '1.0.36'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['recommonmark', 'sphinx_rtd_theme', 'sphinx.ext.autodoc', 'sphinx.ext.napoleon']
+extensions = [
+    "recommonmark",
+    "sphinx_rtd_theme",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+]
 
 # Add any paths that contain templates here, relative to this directory.
-templates_path = ['_templates']
+templates_path = ["_templates"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -53,22 +74,21 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-#html_theme = 'alabaster'
+# html_theme = 'alabaster'
 
 
 html_theme = "sphinx_rtd_theme"
-#html_theme_path = ["_themes", ]
+# html_theme_path = ["_themes", ]
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
-master_doc = 'index'
+master_doc = "index"
 
 # source_parsers = {
 #     '.md': CommonMarkParser,
 # }
 
-#source_suffix = ['.rst', '.md']
-
+# source_suffix = ['.rst', '.md']

@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "top2vec"
+dynamic = ["version"]
+description = "Top2Vec learns jointly embedded topic, document and word vectors."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Dimo Angelov", email = "dimo.angelov@gmail.com"},
+]
+keywords = [
+    "topic modeling",
+    "semantic search",
+    "word embedding",
+    "document embedding",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.20.0",
+    "pandas",
+    "scikit-learn>=1.2.0",
+    "gensim>=4.0.0",
+    "umap-learn>=0.5.1",
+    "hdbscan>=0.8.27",
+    "wordcloud",
+    "transformers",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+sentence_encoders = [
+    "tensorflow",
+    "tensorflow_hub",
+    "tensorflow_text",
+]
+sentence_transformers = [
+    "torch",
+    "sentence_transformers",
+]
+indexing = [
+    "hnswlib",
+]
+docs = [
+    "sphinx>=7,<9",
+    "sphinx-rtd-theme",
+    "recommonmark",
+]
+
+[project.urls]
+Homepage = "https://github.com/ddangelov/Top2Vec"
+Repository = "https://github.com/ddangelov/Top2Vec"
+Documentation = "https://top2vec.readthedocs.io/en/latest/"
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools]
+packages = ["top2vec"]
+
+[tool.setuptools.dynamic]
+version = {attr = "top2vec.__version__"}
+
+[tool.uv]
+default-groups = ["dev"]

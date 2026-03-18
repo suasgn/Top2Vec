@@ -196,6 +196,40 @@ To install indexing options:
 
     pip install top2vec[indexing]
 
+Install from GitHub
+-------------------
+
+To install the latest version directly from this repository:
+
+    pip install git+https://github.com/suasgn/Top2Vec.git
+
+If you want to install optional extras from GitHub:
+
+    pip install "top2vec[sentence_encoders] @ git+https://github.com/suasgn/Top2Vec.git"
+    pip install "top2vec[sentence_transformers] @ git+https://github.com/suasgn/Top2Vec.git"
+    pip install "top2vec[indexing] @ git+https://github.com/suasgn/Top2Vec.git"
+
+If you are using `uv` in another project:
+
+    uv add "top2vec @ git+https://github.com/suasgn/Top2Vec.git"
+
+For local development this repository now uses `uv`:
+
+    uv sync --group dev
+
+To work on docs:
+
+    uv sync --extra docs --group dev
+
+To install the optional embedding and indexing backends used by the broader test suite:
+
+    uv sync --all-extras --group dev
+
+Run tests and build distributions with:
+
+    uv run pytest
+    uv build
+
 
 Usage
 -----
