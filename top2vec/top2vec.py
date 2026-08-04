@@ -21,9 +21,8 @@ from scipy.special import softmax
 import os
 from collections import namedtuple
 from typing import List
-from . import embedding
 from .embedding import contextual_token_embeddings, sliding_window_average, average_embeddings, \
-    smooth_document_token_embeddings
+    smooth_document_token_embeddings, load_contextual_model, validate_contextual_model
 from tqdm import tqdm
 
 try:
@@ -69,14 +68,6 @@ sh = logging.StreamHandler()
 sh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logger.addHandler(sh)
 
-contextual_top2vec_models = ["all-MiniLM-L6-v2", "all-mpnet-base-v2", "paraphrase-multilingual-MiniLM-L12-v2", "paraphrase-multilingual-mpnet-base-v2"]
-contextual_top2vec_model_paths = {
-    "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
-    "all-mpnet-base-v2": "sentence-transformers/all-mpnet-base-v2",
-    "paraphrase-multilingual-MiniLM-L12-v2": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-    "paraphrase-multilingual-mpnet-base-v2": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-}
-
 use_models = ["universal-sentence-encoder-multilingual",
               "universal-sentence-encoder",
               "universal-sentence-encoder-large",
@@ -92,7 +83,8 @@ use_model_urls = {
 
 sbert_models = ["distiluse-base-multilingual-cased",
                 "all-MiniLM-L6-v2",
-                "paraphrase-multilingual-MiniLM-L12-v2"]
+                "paraphrase-multilingual-MiniLM-L12-v2",
+                "sentence-transformers/all-MiniLM-L6-v2"]
 
 acceptable_embedding_models = use_models + sbert_models
 
@@ -224,9 +216,9 @@ class Top2Vec:
         embeddings from each document and will find multiple topics per
         document. It will also find topic segments within each document.
 
-        The only valid embedding_model options are:
-        * all-MiniLM-L6-v2
-        * all-mpnet-base-v2
+        Contextual models may be supplied as a Hugging Face model identifier,
+        a local model directory, or an instantiated Transformers model. The
+        model must provide token-level ``last_hidden_state`` output.
 
     c_top2vec_smoothing_window: int (Optional, default 5)
         The size of the window used for smoothing the contextual token
@@ -256,7 +248,7 @@ class Top2Vec:
         For more information visit:
         https://radimrehurek.com/gensim/models/phrases.html
 
-    embedding_model: string or callable
+    embedding_model: string, os.PathLike, callable, or Transformers model
         This will determine which model is used to generate the document and
         word embeddings. The valid string options are:
 
@@ -303,6 +295,21 @@ class Top2Vec:
         the set_embedding_model method will need to be called and the same
         embedding_model callable used during training must be passed to it.
 
+        For contextual Top2Vec this may instead be any Hugging Face model
+        identifier, local model directory, or instantiated Transformers model
+        that passes the contextual token embedding capability check.
+
+    embedding_tokenizer: string, os.PathLike, or tokenizer (Optional)
+        Tokenizer to use with a contextual embedding model. It may be a Hugging
+        Face identifier, local directory, or tokenizer instance. It defaults
+        to the same identifier or path as ``embedding_model``. For an
+        instantiated model, it is inferred from ``name_or_path`` when possible;
+        otherwise it must be provided.
+
+    contextual_model_max_length: int (default=512)
+        Maximum input length used by contextual Top2Vec. The effective value
+        is capped by finite limits declared by the tokenizer and model.
+
     embedding_model_path: string (Optional)
         Pre-trained embedding models will be downloaded automatically by
         default. However they can also be uploaded from a file that is in the
@@ -313,6 +320,10 @@ class Top2Vec:
 
     embedding_batch_size: int (default=32)
         Batch size for documents being embedded.
+
+    show_progress_bar: bool (default=False)
+        Whether to show progress bars while generating embeddings and
+        contextual document representations. Query embedding remains silent.
 
     split_documents: bool (default False)
         If set to True, documents will be split into parts before embedding.
@@ -457,7 +468,7 @@ class Top2Vec:
                  topic_merge_delta=0.1,
                  ngram_vocab=False,
                  ngram_vocab_args=None,
-                 embedding_model='all-MiniLM-L6-v2',
+                 embedding_model='sentence-transformers/all-MiniLM-L6-v2',
                  embedding_model_path=None,
                  embedding_batch_size=32,
                  split_documents=False,
@@ -479,8 +490,15 @@ class Top2Vec:
                  hdbscan_args=None,
                  gpu_hdbscan=False,
                  index_topics=False,
-                 verbose=True
+                 verbose=True,
+                 show_progress_bar=False,
+                 embedding_tokenizer=None,
+                 contextual_model_max_length=512,
                  ):
+
+        if not isinstance(show_progress_bar, bool):
+            raise ValueError("show_progress_bar must be a boolean.")
+        self.show_progress_bar = show_progress_bar
 
         if verbose:
             logger.setLevel(logging.DEBUG)
@@ -720,15 +738,22 @@ class Top2Vec:
 
         elif contextual_top2vec:
             if not embedding_model:
-                embedding_model = "all-MiniLM-L6-v2"
-            elif embedding_model not in contextual_top2vec_models:
-                raise ValueError(f"{embedding_model} is not a valid contextual top2vec model.")
+                embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+            if not isinstance(contextual_model_max_length, int) or contextual_model_max_length <= 0:
+                raise ValueError("contextual_model_max_length must be a positive integer.")
 
             self.contextual_top2vec = True
-            self.embedding_model = embedding_model
-
-            # create contextualized document embeddings
-            model_name = contextual_top2vec_model_paths[embedding_model]
+            contextual_model, contextual_tokenizer, model_reference = load_contextual_model(
+                embedding_model,
+                embedding_tokenizer=embedding_tokenizer,
+            )
+            model_max_length = validate_contextual_model(
+                contextual_model,
+                contextual_tokenizer,
+                requested_max_length=contextual_model_max_length,
+            )
+            self.embedding_model = model_reference
+            self.contextual_model_max_length = model_max_length
 
             logger.info('Pre-processing documents for training')
             # create vocab
@@ -738,23 +763,28 @@ class Top2Vec:
             logger.info('Creating vocabulary embedding')
             self.word_indexes = dict(zip(self.vocab, range(len(self.vocab))))
             self.word_vectors = average_embeddings(self.vocab,
-                                                   batch_size=32,
-                                                   model_max_length=512,
-                                                   embedding_model=model_name)
+                                                   batch_size=embedding_batch_size,
+                                                   model_max_length=model_max_length,
+                                                   model=contextual_model,
+                                                   tokenizer=contextual_tokenizer,
+                                                   show_progress_bar=show_progress_bar)
 
             logger.info('Create contextualized document embeddings')
 
             (document_token_embeddings,
              document_tokens,
              document_labels) = contextual_token_embeddings(documents,
-                                                            batch_size=32,
-                                                            model_max_length=512,
-                                                            embedding_model=model_name)
+                                                            batch_size=embedding_batch_size,
+                                                            model_max_length=model_max_length,
+                                                            model=contextual_model,
+                                                            tokenizer=contextual_tokenizer,
+                                                            show_progress_bar=show_progress_bar)
 
             averaged_embeddings, chunk_tokens = sliding_window_average(document_token_embeddings,
                                                                        document_tokens,
                                                                        window_size=50,
-                                                                       stride=40)
+                                                                       stride=40,
+                                                                       show_progress_bar=show_progress_bar)
 
             self.document_token_embeddings = document_token_embeddings
             self.document_vectors = averaged_embeddings
@@ -827,7 +857,10 @@ class Top2Vec:
         document_labels = np.array(document_labels)
 
         # Iterate over unique document labels
-        for doc_ind in tqdm(np.unique(document_labels), desc="Calculating document topic distributions"):
+        for doc_ind in tqdm(
+                np.unique(document_labels),
+                desc="Calculating document topic distributions",
+                disable=not getattr(self, "show_progress_bar", False)):
             # Get indices and relevant data for the current document
             doc_inds = np.where(document_labels == doc_ind)[0]
             token_topics = doc_top[doc_inds]
@@ -1031,21 +1064,21 @@ class Top2Vec:
 
         if (self.embedding_model in use_models) or self.embedding_model == "custom":
 
-            current = 0
-            batches = int(len(train_corpus) / batch_size)
-            extra = len(train_corpus) % batch_size
-
-            for ind in range(0, batches):
+            batch_starts = range(0, len(train_corpus), batch_size)
+            for current in tqdm(
+                    batch_starts,
+                    desc="Embedding documents",
+                    disable=not getattr(self, "show_progress_bar", False)):
                 document_vectors.append(self.embed(train_corpus[current:current + batch_size]))
-                current += batch_size
-
-            if extra > 0:
-                document_vectors.append(self.embed(train_corpus[current:current + extra]))
 
             document_vectors = self._l2_normalize(np.array(np.vstack(document_vectors)))
 
         else:
-            document_vectors = self._l2_normalize(self.embed(train_corpus, batch_size=batch_size))
+            document_vectors = self._l2_normalize(self.embed(
+                train_corpus,
+                batch_size=batch_size,
+                show_progress_bar=getattr(self, "show_progress_bar", False),
+            ))
 
         return document_vectors
 
@@ -1053,7 +1086,12 @@ class Top2Vec:
         self._check_import_status()
         self._check_model_status()
 
-        return self._l2_normalize(np.array(self.embed([query])[0]))
+        if self.embedding_model in sbert_models:
+            embedding = self.embed([query], show_progress_bar=False)[0]
+        else:
+            embedding = self.embed([query])[0]
+
+        return self._l2_normalize(np.array(embedding))
 
     def _create_topic_vectors(self, cluster_labels):
         unique_labels = set(cluster_labels)
@@ -1604,7 +1642,11 @@ class Top2Vec:
 
             # smooth document token embeddings
             document_token_embeddings = smooth_document_token_embeddings(self.document_token_embeddings,
-                                                                         window_size=c_top2vec_smoothing_window)
+                                                                         window_size=c_top2vec_smoothing_window,
+                                                                         show_progress_bar=getattr(
+                                                                             self,
+                                                                             "show_progress_bar",
+                                                                             False))
             document_token_embeddings = normalize(np.vstack(document_token_embeddings))
 
             # create topic segments
@@ -2392,7 +2434,11 @@ class Top2Vec:
 
             # smooth document token embeddings
             document_token_embeddings = smooth_document_token_embeddings(self.document_token_embeddings,
-                                                                         window_size=self.c_top2vec_smoothing_window)
+                                                                         window_size=self.c_top2vec_smoothing_window,
+                                                                         show_progress_bar=getattr(
+                                                                             self,
+                                                                             "show_progress_bar",
+                                                                             False))
             document_token_embeddings = normalize(np.vstack(document_token_embeddings))
 
             # create topic segments
@@ -3212,8 +3258,8 @@ class Top2Vec:
 
         Returns
         -------
-        A matplotlib plot of the word cloud with the topic number will be
-        displayed.
+        matplotlib.figure.Figure
+            The generated word cloud figure.
 
         """
 
@@ -3227,11 +3273,12 @@ class Top2Vec:
             word_score_dict = dict(zip(self.topic_words[topic_num],
                                        softmax(self.topic_word_scores[topic_num])))
 
-        plt.figure(figsize=(16, 4),
-                   dpi=200)
+        figure = plt.figure(figsize=(16, 4),
+                            dpi=200)
         plt.axis("off")
         plt.imshow(
             WordCloud(width=1600,
                       height=400,
                       background_color=background_color).generate_from_frequencies(word_score_dict))
         plt.title("Topic " + str(topic_num), loc='left', fontsize=25, pad=20)
+        return figure

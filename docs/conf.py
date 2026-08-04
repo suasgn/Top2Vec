@@ -1,4 +1,4 @@
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 import sphinx_rtd_theme
 from recommonmark.parser import CommonMarkParser
@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.abspath(".."))
 
 def get_release():
     try:
-        return version("top2vec")
+        return package_version("top2vec")
     except PackageNotFoundError:
         init_py = Path(__file__).resolve().parents[1] / "top2vec" / "__init__.py"
         match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", init_py.read_text())
@@ -46,6 +46,7 @@ author = "Dimo Angelov"
 
 # The full version, including alpha/beta/rc tags
 release = get_release()
+version = release
 
 
 # -- General configuration ---------------------------------------------------
@@ -83,7 +84,7 @@ html_theme = "sphinx_rtd_theme"
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]
+html_static_path = []
 
 master_doc = "index"
 

@@ -16,9 +16,7 @@ The Top2Vec library now supports a new contextual version, allowing for deeper t
 
 ### Key Features of Contextual Top2Vec
 
-- **`contextual_top2vec` flag**: A new parameter, `contextual_top2vec`, is added to the Top2Vec class. When set to `True`, the model uses contextual token embeddings. Only the following embedding models are supported:
-  - `all-MiniLM-L6-v2`
-  - `all-mpnet-base-v2`
+- **`contextual_top2vec` flag**: When set to `True`, the model uses contextual token embeddings. The embedding model can be a Hugging Face model identifier, a local model directory, or an instantiated Transformers model.
 - **Topic Spans**: C-Top2Vec automatically determines the number of topics and finds topic segments within documents, allowing for a more granular topic discovery.
 
 ### Simple Usage Example
@@ -31,8 +29,63 @@ from top2vec import Top2Vec
 # Create a Contextual Top2Vec model
 top2vec_model = Top2Vec(documents=documents,
                         ngram_vocab=True,
-                        contextual_top2vec=True)
+                        contextual_top2vec=True,
+                        embedding_model="sentence-transformers/all-MiniLM-L6-v2")
 ```
+
+The model name is passed directly to Hugging Face; Top2Vec does not maintain a
+contextual model whitelist or translate short aliases. A local model directory
+containing both the model and tokenizer can be used in the same way:
+
+```python
+top2vec_model = Top2Vec(
+    documents=documents,
+    contextual_top2vec=True,
+    embedding_model="/path/to/local/model",
+)
+```
+
+An instantiated Transformers model is also supported. Pass its tokenizer when
+the tokenizer cannot be inferred from the model's `name_or_path` metadata:
+
+```python
+from transformers import AutoModel, AutoTokenizer
+
+model_id = "sentence-transformers/all-MiniLM-L6-v2"
+encoder = AutoModel.from_pretrained(model_id)
+encoder_tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+top2vec_model = Top2Vec(
+    documents=documents,
+    contextual_top2vec=True,
+    embedding_model=encoder,
+    embedding_tokenizer=encoder_tokenizer,
+)
+```
+
+#### Recommended contextual model specifications
+
+Top2Vec performs a capability check before training. A compatible model must:
+
+- Load through `transformers.AutoModel`, or be an instantiated Transformers model.
+- Return a finite, three-dimensional `last_hidden_state` with shape `(batch_size, sequence_length, embedding_dimension)`.
+- Have a tokenizer that supports batched padding and truncation and returns `input_ids` and `attention_mask` PyTorch tensors.
+- Produce at least one non-special token for normal text. Padding and special tokens are excluded from pooling and topic assignment.
+- Use the same hidden-state space for vocabulary and document-token embeddings.
+
+For best topic quality, prefer a bidirectional encoder such as BERT, RoBERTa,
+MiniLM, MPNet, or XLM-R that covers the language of the corpus and has been
+trained for semantic similarity. Decoder-only models are not recommended:
+their causal token representations are asymmetric and they commonly require
+manual padding-token configuration. Models that expose only a pooled sentence
+embedding are not compatible because Contextual Top2Vec requires one embedding
+per token.
+
+The effective input length is the smallest of `contextual_model_max_length`
+(512 by default), the tokenizer limit, and the model positional limit. Text
+beyond that length is truncated. Choose an embedding dimension and batch size
+that fit available accelerator memory; memory use grows with batch size,
+sequence length, hidden dimension, and model depth.
 
 ### New Methods for Contextual Top2Vec
 
@@ -70,7 +123,7 @@ get_document_tokens() -> List[List[str]]
 
 ### Usage Note
 
-The **contextual version** of Top2Vec requires specific embedding models, and the new methods provide insights into the distribution, relevance, and assignment of topics at both the document and token levels, allowing for a richer understanding of the data.
+The contextual version validates the embedding model's token-level capabilities before training. The new methods provide insights into the distribution, relevance, and assignment of topics at both the document and token levels, allowing for a richer understanding of the data.
 
 > Warning: Contextual Top2Vec is still in **beta**. You may encounter issues or unexpected behavior, and the functionality may change in future updates.
 

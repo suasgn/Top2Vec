@@ -11,6 +11,7 @@ Welcome to Top2Vec's documentation!
    :caption: User Guide / Tutorial:
 
    Top2Vec
+   contextual_top2vec
 
 .. toctree::
    :caption: API Reference:

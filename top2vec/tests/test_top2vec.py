@@ -1,4 +1,5 @@
 import pytest
+from matplotlib.figure import Figure
 from top2vec.top2vec import Top2Vec
 from sklearn.datasets import fetch_20newsgroups
 import numpy as np
@@ -253,7 +254,8 @@ def test_get_topic_size(top2vec_model, reduced):
 def test_generate_topic_wordcloud(top2vec_model, reduced):
     # generate word cloud
     num_topics = top2vec_model.get_num_topics(reduced=reduced)
-    top2vec_model.generate_topic_wordcloud(num_topics - 1, reduced=reduced)
+    figure = top2vec_model.generate_topic_wordcloud(num_topics - 1, reduced=reduced)
+    assert isinstance(figure, Figure)
 
 
 @pytest.mark.parametrize('top2vec_model', models)
